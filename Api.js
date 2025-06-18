@@ -1,15 +1,16 @@
-var express = require("express");
+import express from 'express';
+import bodyParser from 'body-parser';
 
-let passport = require("passport");
-let jwt = require("jsonwebtoken");
-let JWTStrategy = require("passport-jwt").Strategy;
-let ExtractJWT = require("passport-jwt").ExtractJwt;
+// const router = express.Router();
 
-let { horScopes, mainHeading, ourBlogData, homams, feedback, plans,contactDetails } = require("./data.js");
+import { horScopes, mainHeading, ourBlogData, homams, feedback, plans,contactDetails } from './data.js';
 
+import connection from './config/db_client.js';
 
 var app = express();
+app.use(bodyParser.json());
 app.use(express.json());
+
 app.use(function (req, res, next) {
   res.header("Access-Control-Allow-Origin", "*");
   res.header(
@@ -23,27 +24,51 @@ app.use(function (req, res, next) {
 });
 
 let port = 2410;
-
-app.use(passport.initialize());
-
 app.listen(port, () => console.log(`Node app listening on port ${port}`));
-const cookieParser = require("cookie-parser");
-app.use(cookieParser());
-const parama = {
-  jwtFromRequest: ExtractJWT.fromAuthHeaderAsBearerToken(), secretOrKey: "jwtsecret23647832"
-};
 
+// ----------------------------------------------
+app.post('/user', (req, res) => {
+  const { name, age } = req.body;
+
+  const sql = 'INSERT INTO users (name, age) VALUES (?, ?)';
+  connection.query(sql, [name, age], (err, result) => {
+    if (err) return res.status(500).send('Error inserting data');
+    res.send('User inserted successfully');
+  });
+});
+
+app.get('/users', (req, res) => {
+  const sql = 'SELECT * FROM users';
+  connection.query(sql, (err, results) => {
+    if (err) {
+      return res.status(500).send('Error fetching data');
+    }
+    res.json(results);
+  });
+});
+
+// ----------------------------------------------------------
 
 app.get("/cosmic_guide", async function (req, res) {
-  try {
-    res.send(mainHeading);
-  } catch (error) {
-    if (error.response) {
-      let { status, statusText } = error.response;
+
+  const query = 'SELECT * FROM main_headings';
+  connection.query(query, (error, results) => {
+    if (error) {
+      res.status(500).json({ error: 'Database query failed' });
+    } else {
+      res.json(results);
+    }
+  });
+  
+  // try {
+  //   res.send(mainHeading);
+  // } catch (error) {
+  //   if (error.response) {
+  //     let { status, statusText } = error.response;
       
-      res.status(status).send(statusText);
-    } else res.status(484).send(error);
-  }
+  //     res.status(status).send(statusText);
+  //   } else res.status(484).send(error);
+  // }
 });
 
 app.put("/cosmic_guide", function (req, res) {

@@ -292,5 +292,12 @@ let contactDetails = [
         inst_url:"",
     }
 ];
-module.exports = { horScopes, mainHeading, ourBlogData, homams, feedback, plans, contactDetails };
-
+export {
+  horScopes,
+  mainHeading,
+  ourBlogData,
+  homams,
+  feedback,
+  plans,
+  contactDetails
+};
