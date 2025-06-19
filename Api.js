@@ -225,20 +225,48 @@ app.get("/blogData/:id", (req, res) => {
 });
 
 
-app.post("/homams", async function (req, res) {
-  const {
-    image = "", pujaName, category, bookingDate, price, qty = 1, desc = "", parpants = [] } = req.body;
+app.post("/homams", upload.single("image"), (req, res) => {
+  try {
+    const { pujaName, category, bookingDate, price, qty, descp, participants } = JSON.parse(req.body.data);
+    const imagePath = req.file ? "/uploads/homams/" + req.file.filename : "";
 
-  if (!pujaName || !bookingDate || !price || parpants.length === 0) {
-    return res.status(400).json({ message: "Missing required fields" });
+    // Insert into homams
+    const insertHomam = `
+      INSERT INTO homams (image, pujaName, category, bookingDate, price, qty, descp)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    connection.query(
+      insertHomam,
+      [imagePath, pujaName, category, bookingDate, price, qty, descp],
+      (err, result) => {
+        if (err) return res.status(500).json({ error: "Homam insert failed", details: err.message });
+
+        const homams_id = result.insertId;
+
+        // Insert participants
+        const insertTasks = participants.map((p) => {
+          return new Promise((resolve, reject) => {
+            const q = `
+              INSERT INTO participants (homams_id, name, dob, birthStar, rashi, gotram)
+              VALUES (?, ?, ?, ?, ?, ?)
+            `;
+            connection.query(q, [homams_id, p.name, p.dob, p.birthStar, p.rashi, p.gotram], (err) => {
+              if (err) return reject(err);
+              resolve();
+            });
+          });
+        });
+
+        Promise.all(insertTasks)
+          .then(() => res.json({ message: "Homam booked successfully", homams_id }))
+          .catch((err) => res.status(500).json({ error: "Participants insert failed", details: err.message }));
+      }
+    );
+  } catch (err) {
+    res.status(400).json({ error: "Invalid JSON or upload", details: err.message });
   }
-  const newHomam = { image, pujaName, category, bookingDate, price, qty, desc, parpants };
-
-  homams.push(newHomam);
-  res.status(201).json(newHomam);
-
 });
-
 
 app.get("/homams", (req, res) => {
   const query = `
@@ -284,8 +312,6 @@ app.get("/homams", (req, res) => {
     res.json(Object.values(result));
   });
 });
-
-
 
 
 app.get("/feedback", (req, res) => {
