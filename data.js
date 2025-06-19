@@ -5,6 +5,12 @@ let mainHeading = [
     { desc: "At Jyotirvani.com, we blend the sacred science of Vedic Astrology with a compassionate, modern approach — offering insights that not only decode your past but also empower your future." }
 ]
 
+let ddd = [
+    {daesd:{date:"",name:"",roll:""}},
+    {sawe:{date:"",name:"",roll:""}},
+    {dfew:{date:"",name:"",roll:""}},
+]
+
 let horScopes = [
     {
         Aries: {
@@ -183,22 +189,6 @@ let horScopes = [
 
 ]
 
-let ourBlog = [
-    {
-        date: "22 March 2025",
-        title: "Yoga and Doshas in Birth Chart",
-        image: "",
-        hindi_heading: {
-            title: "जन्म कुंडली में योग और दोष: क्या है इनका असर? – जानिए कैसे प्रभावित करते हैं आपकी ज़िन्दगी को ग्रहों के ये संयोजन",
-            desc: ["परिचय: ज्योतिष शास्त्र में जन्म कुंडली (जन्म पत्रिका) हमारे जीवन का एक नक्शा होती है, जिसमें ग्रहों की स्थिति और उनके आपस के संबंध दर्शाए जाते हैं। कुंडली में बने विभिन्न योग और दोष हमारे जीवन की खुशियाँ, चुनौतियाँ, स्वास्थ्य, धन-संपत्ति, परिवार और करियर पर गहरा प्रभाव डालते हैं।इस ब्लॉग में हम जानेंगे कि जन्म कुंडली में योग और दोष क्या होते हैं, इनके प्रकार कौन-कौन से हैं, और उनका हमारे जीवन पर क्या असर होता है।"]
-        },
-        eng_heading: {
-            title: "Yoga and Dosha in Birth Chart: What Are They and How Do They Affect Your Life?",
-            desc: ["Introduction: In astrology, the birth chart (Kundali) acts as a map of our life, showing the positions of planets and their relationships. The various yogas (auspicious combinations) and doshas (inauspicious combinations) formed in the chart deeply influence our happiness, challenges, health, wealth, family, and career."]
-        },
-
-    }
-]
 
 let ourBlogData = [
     {

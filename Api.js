@@ -1,11 +1,27 @@
 import express from 'express';
 import bodyParser from 'body-parser';
+import multer from "multer";
+import path from "path";
 
 // const router = express.Router();
 
-import { horScopes, mainHeading, ourBlogData, homams, feedback, plans,contactDetails } from './data.js';
+import { horScopes, mainHeading, ourBlogData, homams, feedback, plans, contactDetails } from './data.js';
 
 import connection from './config/db_client.js';
+
+
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "public/uploads/blogs"); // Folder path
+  },
+  filename: (req, file, cb) => {
+    const uniqueName = Date.now() + '-' + file.originalname;
+    cb(null, uniqueName);
+  },
+});
+
+const upload = multer({ storage });
 
 var app = express();
 app.use(bodyParser.json());
@@ -59,94 +75,155 @@ app.get("/cosmic_guide", async function (req, res) {
       res.json(results);
     }
   });
-  
-  // try {
-  //   res.send(mainHeading);
-  // } catch (error) {
-  //   if (error.response) {
-  //     let { status, statusText } = error.response;
-      
-  //     res.status(status).send(statusText);
-  //   } else res.status(484).send(error);
-  // }
+
 });
 
-app.put("/cosmic_guide", function (req, res) {
-  const { heading, intro, desc } = req.body;
-  if (heading) {
-    mainHeading[0].heading = heading;
-  }
-  if (intro) {
-    mainHeading[1].intro = intro;
-  }
-  if (desc) {
-    mainHeading[2].desc = desc;
-  }
-  res.json({
-    message: 'Content updated successfully',
-    data: mainHeading
+app.put("/cosmic_guide/:id", function (req, res) {
+
+  const { id } = req.params;
+  const { type, content } = req.body;
+
+  const query = `UPDATE main_headings SET type = ?, content = ? WHERE id = ?`;
+  const values = [type, content, id];
+
+  connection.query(query, values, (error, result) => {
+    if (error) {
+      return res.status(500).json({ error: 'Database update failed' });
+    }
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'No record found with that ID' });
+    }
+    res.json({ message: 'Data updated successfully' });
   });
+
 
 });
 
 app.get("/horoscope", async function (req, res) {
-  try {
-    res.send(horScopes);
-  } catch (error) {
-    if (error.response) {
-      let { status, statusText } = error.response;
-      
-      res.status(status).send(statusText);
-    } else res.status(484).send(error);
-  }
+
+  const query = "SELECT * FROM horoscope";
+  connection.query(query, (err, results) => {
+    if (err) return res.status(500).json({ error: "Query failed" });
+    res.json(results);
+  });
 });
 
 
-app.put("/horoscope/:sigh", function (req, res) {
-  let sign = req.params.sigh;
-  let body = req.body;
-  const index = horScopes.findIndex(item => item[sign]);
-  console.log(index);
+app.put('/horoscope/:sign', (req, res) => {
+  const sign = req.params.sign;
+  const data = req.body;
 
-  if (index >= 0) {
-    horScopes[index][sign] = { ...horScopes[index][sign], ...body }
-    res.send(horScopes[index][sign]);
+  const query = `UPDATE horoscope SET 
+    date = ?, summary = ?, personality = ?, main_traits = ?, weaknesses = ?,
+    lucky_color = ?, luck_number = ?, status = ?, energy = ?, luck = ?, love = ?
+    WHERE horo_title = ?`;
 
-  }
-  else {
-    res.status(404).send({ message: "Sign not found" });
-  }
-
+  const values = [
+    data.date, data.summary, data.personality, data.main_traits, data.weaknesses,
+    data.lucky_color, data.luck_number, data.status, data.energy, data.luck, data.love, sign
+  ];
+  connection.query(query, values, (err, result) => {
+    if (err) return res.status(500).json({ error: 'Update failed' });
+    if (result.affectedRows === 0) return res.status(404).json({ message: 'Horo_title sign not found' });
+    res.json({ message: 'Horoscope updated successfully' });
+  });
 });
 
 
+app.post("/blogData", upload.single("image"), (req, res) => {
+  const { title, date, translations } = JSON.parse(req.body.data); 
+  const image = req.file ? "/uploads/blogs/" + req.file.filename : "";
 
-app.post("/blogData", async function (req, res) {
-  const { title, image = "", date, hindi, english } = req.body;
+  const blogInsert = `INSERT INTO ourblogs (title, image, date) VALUES (?, ?, ?)`;
 
-  if (!title || !date || !hindi || !english) {
-    return res.status(400).json({ message: "Title, Date, Hindi and English sections are required." });
-  }
+  connection.query(blogInsert, [title, image, date], (err, blogResult) => {
+    if (err) return res.status(500).json({ error: "Failed to insert blog", details: err });
 
-  const newBlog = { title, image, date, hindi, english };
-  ourBlogData.push(newBlog);
-  res.status(201).json({ message: "Blog added successfully!", blog: newBlog });
+    const blogId = blogResult.insertId;
 
+    let translationTasks = translations.map((t) => {
+      return new Promise((resolve, reject) => {
+        const tQuery = `INSERT INTO blogsdata (ourblogs_id, language, subtitle, intro) VALUES (?, ?, ?, ?)`;
+
+        connection.query(tQuery, [blogId, t.language, t.subtitle, t.intro], (err, tResult) => {
+          if (err) return reject(err);
+
+          const blogsdataId = tResult.insertId;
+
+          let sectionTasks = t.sections.map((s) => {
+            return new Promise((resSec, rejSec) => {
+              const sQuery = `INSERT INTO blogs_sections (blogsData, heading, yoga, dosha) VALUES (?, ?, ?, ?)`;
+              connection.query(sQuery, [blogsdataId, s.heading, s.yoga, s.dosha], (err) => {
+                if (err) return rejSec(err);
+                resSec();
+              });
+            });
+          });
+
+          Promise.all(sectionTasks).then(resolve).catch(reject);
+        });
+      });
+    });
+
+    Promise.all(translationTasks)
+      .then(() => {
+        res.json({ message: "Blog inserted with image and translations", blog_id: blogId });
+      })
+      .catch((err) => {
+        res.status(500).json({ error: "Translation insert failed", details: err });
+      });
+  });
 });
 
+app.get("/blogData/:id", (req, res) => {
+  const blogId = req.params.id;
 
+  const query = `
+    SELECT  ob.id AS blog_id,ob.title,ob.image,ob.date,bd.id AS blogsdata_id,
+      bd.language,bd.subtitle,bd.intro,bs.heading,bs.yoga,bs.dosha
+    FROM ourblogs ob
+    JOIN blogsdata bd ON ob.id = bd.ourblogs_id
+    JOIN blogs_sections bs ON bd.id = bs.blogsData
+    WHERE ob.id = ?
+  `;
 
-app.get("/blogData", async function (req, res) {
-  try {
-    res.send(ourBlogData);
-  } catch (error) {
-    if (error.response) {
-      let { status, statusText } = error.response;
-      
-      res.status(status).send(statusText);
-    } else res.status(484).send(error);
-  }
+  connection.query(query, [blogId], (err, rows) => {
+    if (err) return res.status(500).json({ error: 'Query failed', details: err.message });
+    if (!rows.length) return res.status(404).json({ message: "Blog not found" });
+
+    // Group into nested format
+    const blog = {
+      id: rows[0].blog_id,
+      title: rows[0].title,
+      image: rows[0].image,
+      date: rows[0].date,
+      translations: []
+    };
+
+    const langMap = {};
+
+    rows.forEach(row => {
+      if (!langMap[row.blogsdata_id]) {
+        langMap[row.blogsdata_id] = {
+          language: row.language,
+          subtitle: row.subtitle,
+          intro: row.intro,
+          sections: []
+        };
+        blog.translations.push(langMap[row.blogsdata_id]);
+      }
+
+      langMap[row.blogsdata_id].sections.push({
+        heading: row.heading,
+        yoga: row.yoga,
+        dosha: row.dosha
+      });
+    });
+
+    res.json(blog);
+  });
 });
+
 
 app.post("/homams", async function (req, res) {
   const {
@@ -163,89 +240,181 @@ app.post("/homams", async function (req, res) {
 });
 
 
-app.get("/homams", async function (req, res) {
-  try {
-    res.send(homams);
-  } catch (error) {
-    if (error.response) {
-      let { status, statusText } = error.response;
-      
-      res.status(status).send(statusText);
-    } else res.status(484).send(error);
-  }
-})
+app.get("/homams", (req, res) => {
+  const query = `
+    SELECT 
+      h.id AS homam_id,h.pujaName,h.image,h.category,h.bookingDate,h.price,
+      h.qty,h.descp,p.id AS participant_id,p.name,p.dob,p.birthStar,p.rashi,p.gotram
+    FROM homams h
+    LEFT JOIN participants p ON h.id = p.homams_id
+    ORDER BY h.id;
+  `;
 
+  connection.query(query, (err, rows) => {
+    if (err) return res.status(500).json({ error: "Query failed", details: err.message });
 
-app.post("/feedback", async function (req, res) {
-  let body = req.body;
+    const result = {};
+    rows.forEach(row => {
+      if (!result[row.homam_id]) {
+        result[row.homam_id] = {
+          id: row.homam_id,
+          pujaName: row.pujaName,
+          image: row.image,
+          category: row.category,
+          bookingDate: row.bookingDate,
+          price: row.price,
+          qty: row.qty,
+          descp: row.descp,
+          participants: []
+        };
+      }
 
-  if (!body.name || !body.email || !body.testimonial) {
-    return res.status(400).send({ message: "Name, Email, and Testimonial are required." });
-  }
-  let newFeedback = { ...body, approved: false };
-  feedback.push(newFeedback);
-  res.status(201).send(newFeedback);
+      if (row.participant_id) {
+        result[row.homam_id].participants.push({
+          id: row.participant_id,
+          name: row.name,
+          dob: row.dob,
+          birthStar: row.birthStar,
+          rashi: row.rashi,
+          gotram: row.gotram
+        });
+      }
+    });
 
-
+    res.json(Object.values(result));
+  });
 });
 
-app.get("/feedback", async function (req, res) {
-  try {
-    res.send(feedback);
-  } catch (error) {
-    if (error.response) {
-      let { status, statusText } = error.response;
-      
-      res.status(status).send(statusText);
-    } else res.status(484).send(error);
-  }
+
+
+
+app.get("/feedback", (req, res) => {
+  const query = "SELECT * FROM feedback ORDER BY created_at DESC";
+
+  connection.query(query, (err, results) => {
+    if (err) return res.status(500).json({ error: "Failed to fetch feedback", details: err.message });
+    res.json(results);
+  });
 });
 
-app.post("/plans", async function (req, res) {
+app.post("/feedback", (req, res) => {
+  const { name, email, location, testimonial } = req.body;
 
-  const { plan_name, price, popular = false, label, title, features } = req.body;
-
-  if (!plan_name || !price || !title || !Array.isArray(features)) {
-    return res.status(400).json({ message: "Missing required fields or invalid data format" });
+  if (!name || !email || !location || !testimonial) {
+    return res.status(400).json({ error: "All fields are required" });
   }
 
-  const newPlan = { plan_name, price, popular, label, title, features };
-  plans.push(newPlan);
-  res.status(201).json({ message: "Plan added successfully", plan: newPlan });
+  const query = `
+    INSERT INTO feedback (name, email, location, testimonial, approved)
+    VALUES (?, ?, ?, ?, false)
+  `;
 
+  connection.query(query, [name, email, location, testimonial], (err, result) => {
+    if (err) return res.status(500).json({ error: "Insert failed", details: err.message });
+
+    res.json({ message: "Feedback submitted successfully", id: result.insertId });
+  });
 });
 
-app.get("/allPlans", async function (req, res) {
-  try {
-    res.send(plans);
-  } catch (error) {
-    if (error.response) {
-      let { status, statusText } = error.response;
-      
-      res.status(status).send(statusText);
-    } else res.status(484).send(error);
+
+
+app.post("/plans", (req, res) => {
+  const { plan_name, price, popular, label, title, features } = req.body;
+
+  if (!plan_name || !price || !features || !Array.isArray(features)) {
+    return res.status(400).json({ error: "Missing required fields" });
   }
+
+  const insertPlan = `
+    INSERT INTO plans (plan_name, price, popular, label, title)
+    VALUES (?, ?, ?, ?, ?)
+  `;
+
+  connection.query(insertPlan, [plan_name, price, popular, label, title], (err, result) => {
+    if (err) return res.status(500).json({ error: "Plan insert failed", details: err.message });
+
+    const plan_id = result.insertId;
+
+    const featureInserts = features.map(f => [plan_id, f]);
+    const insertFeatures = `
+      INSERT INTO plan_features (plan_id, feature)
+      VALUES ?
+    `;
+
+    connection.query(insertFeatures, [featureInserts], (err2) => {
+      if (err2) return res.status(500).json({ error: "Features insert failed", details: err2.message });
+
+      res.json({ message: "Plan created successfully", plan_id });
+    });
+  });
 });
+
+
+app.get("/allplans", (req, res) => {
+  const query = `
+    SELECT 
+      p.id AS plan_id,p.plan_name,p.price,p.popular,p.label,p.title,
+      f.id AS feature_id,f.feature
+    FROM plans p
+    LEFT JOIN plan_features f ON p.id = f.plan_id
+    ORDER BY p.id;
+  `;
+
+  connection.query(query, (err, rows) => {
+    if (err) return res.status(500).json({ error: "Query failed", details: err.message });
+
+    const plansMap = {};
+
+    rows.forEach(row => {
+      if (!plansMap[row.plan_id]) {
+        plansMap[row.plan_id] = {
+          id: row.plan_id,
+          plan_name: row.plan_name,
+          price: row.price,
+          popular: row.popular,
+          label: row.label,
+          title: row.title,
+          features: []
+        };
+      }
+
+      if (row.feature) {
+        plansMap[row.plan_id].features.push(row.feature);
+      }
+    });
+
+    res.json(Object.values(plansMap));
+  });
+});
+
+
 
 app.post("/contact", (req, res) => {
-  const { phone, email, address, facebok_url, inst_url } = req.body;
+  const { phone, email, address, facebook_url, instagram_url } = req.body;
 
   if (!phone || !email || !address) {
-    return res.status(400).json({ message: "All fields are required." });
+    return res.status(400).json({ error: "Phone, email, and address are required" });
   }
 
-  contactDetails.push(contactInfo);
-  res.status(201).json({ message: "Contact info added successfully", data: contactInfo });
+  const query = `
+    INSERT INTO contact_details (phone, email, address, facebook_url, instagram_url)
+    VALUES (?, ?, ?, ?, ?)
+  `;
+
+  connection.query(query, [phone, email, address, facebook_url, instagram_url], (err, result) => {
+    if (err) return res.status(500).json({ error: "Insert failed", details: err.message });
+
+    res.json({ message: "Contact details added successfully", id: result.insertId });
+  });
 });
 
-app.get("/contact", async function (req, res) {
-  try {
-    res.send(contactDetails);
-  } catch (error) {
-    if (error.response) {
-      let { status, statusText } = error.response;
-      
-      res.status(status).send(statusText);
-    } else res.status(484).send(error);
-  }
+
+app.get("/contact", (req, res) => {
+  const query = `SELECT * FROM contact_details ORDER BY id DESC`;
+
+  connection.query(query, (err, results) => {
+    if (err) return res.status(500).json({ error: "Fetch failed", details: err.message });
+    res.json(results);
+  });
 });
+
